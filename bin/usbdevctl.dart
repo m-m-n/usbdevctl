@@ -52,37 +52,37 @@ void printLsUsb() async {
 }
 
 void bind(List<String> ids) async {
-  final ports = await retrieveUsbPort(ids);
-  if (ports == null) {
+  final busIds = await retrieveUsbBusId(ids);
+  if (busIds == null) {
     print('device not found');
     return;
   }
 
-  for (var port in ports) {
-    bindCommand('bind', port);
+  for (var busId in busIds) {
+    bindCommand('bind', busId);
   }
 }
 
 void unbind(List<String> ids) async {
-  final ports = await retrieveUsbPort(ids);
-  if (ports == null) {
+  final busIds = await retrieveUsbBusId(ids);
+  if (busIds == null) {
     print('device not found');
     return;
   }
 
-  for (var port in ports) {
-    bindCommand('unbind', port);
+  for (var busId in busIds) {
+    bindCommand('unbind', busId);
   }
 }
 
-void bindCommand(String type, String port) async {
-  // echo "$PORT" | sudo tee /sys/bus/usb/drivers/usb/unbind
-  final echo = await Process.start('echo', [port]);
+void bindCommand(String type, String busId) async {
+  // echo "$busId" | sudo tee /sys/bus/usb/drivers/usb/unbind
+  final echo = await Process.start('echo', [busId]);
   final sudoTee = await Process.start('sudo', ['tee', '/sys/bus/usb/drivers/usb/${type}']);
   echo.stdout.pipe(sudoTee.stdin);
 }
 
-Future<List<String>?> retrieveUsbPort(List<String> ids) async {
+Future<List<String>?> retrieveUsbBusId(List<String> ids) async {
   var result = <String>[];
   for (var id in ids) {
     final vid_pid = id.split(':');
@@ -92,15 +92,15 @@ Future<List<String>?> retrieveUsbPort(List<String> ids) async {
     }
     final vid = vid_pid[0];
     final pid = vid_pid[1];
-    final port = await retrieveUsbPortFromVidAndPid(vid, pid);
-    if (port == null) {
+    final busId = await retrieveUsbBusIdFromVidAndPid(vid, pid);
+    if (busId == null) {
       print('perhaps a dvice that is not plugged in: ${id}');
       continue;
     }
-    if (result.contains(port)) {
+    if (result.contains(busId)) {
       continue;
     }
-    result.add(port);
+    result.add(busId);
   }
 
   if (result.length < 1) {
@@ -109,7 +109,7 @@ Future<List<String>?> retrieveUsbPort(List<String> ids) async {
   return result;
 }
 
-Future<String?> retrieveUsbPortFromVidAndPid(String vid, String pid) async {
+Future<String?> retrieveUsbBusIdFromVidAndPid(String vid, String pid) async {
   final baseDir = '/sys/devices/';
 
   final vidResult = await Process.run('grep', ['-lrs', vid, baseDir]);
@@ -119,18 +119,18 @@ Future<String?> retrieveUsbPortFromVidAndPid(String vid, String pid) async {
 
   final exp = new RegExp(r'^.*/usb[0-9]+/([^/]+)/id(Vendor|Product)$');
 
-  // vendorIDにひっかかったポート一覧を作る
-  var vidMatchPort = <String>[];
+  // vendorIDにひっかかったBUS ID一覧を作る
+  var vidMatchBusId = <String>[];
   for (var vidValue in vidResult.stdout.split('\n')) {
     final match = exp.firstMatch(vidValue);
     if (match == null) {
       continue;
     }
-    final vidPort = match.group(1);
-    if (vidPort == null || vidMatchPort.contains(vidPort)) {
+    final vidBusId = match.group(1);
+    if (vidBusId == null || vidMatchBusId.contains(vidBusId)) {
       continue;
     }
-    vidMatchPort.add(vidPort);
+    vidMatchBusId.add(vidBusId);
   }
 
   final pidResult = await Process.run('grep', ["-lrs", pid, baseDir]);
@@ -138,7 +138,7 @@ Future<String?> retrieveUsbPortFromVidAndPid(String vid, String pid) async {
     return null;
   }
 
-  // productIDでひっかかったポートがvendorIDでひっかかったポートにもあれば指定したvendorID:productIDのデバイスが接続されているポートなので返す
+  // productIDでひっかかったBUS IDがvendorIDでひっかかったBUS IDにもあれば指定したvendorID:productIDのデバイスが接続されているBUS IDなので返す
   // 同じvendorID:productIDのデバイスを複数繋ぐ可能性はあるが現状そのような状況にならないので考えないでおく
   for (var pidValue in pidResult.stdout.split('\n')) {
     if (!exp.hasMatch(pidValue)) {
@@ -148,12 +148,12 @@ Future<String?> retrieveUsbPortFromVidAndPid(String vid, String pid) async {
     if (match == null) {
       continue;
     }
-    final pidPort = match.group(1);
-    if (pidPort == null) {
+    final pidBusId = match.group(1);
+    if (pidBusId == null) {
       continue;
     }
-    if (vidMatchPort.contains(pidPort)) {
-      return pidPort;
+    if (vidMatchBusId.contains(pidBusId)) {
+      return pidBusId;
     }
   }
 
